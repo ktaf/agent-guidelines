@@ -1,0 +1,19 @@
+{
+  "name": "ktaf-skills",
+  "description": "Coding agent plugins for use across projects.",
+  "owner": {
+    "name": "ktaf"
+  },
+  "plugins": [
+    {
+      "name": "agent-guidelines",
+      "displayName": "Agent Guidelines",
+      "description": "Action limits, simple code, and Simplified Technical English for every agent task.",
+      "version": "0.1.1",
+      "source": "./plugins/agent-guidelines",
+      "author": {
+        "name": "ktaf"
+      }
+    }
+  ]
+}

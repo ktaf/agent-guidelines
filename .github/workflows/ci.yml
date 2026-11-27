@@ -1,0 +1,73 @@
+---
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate marketplace and plugin
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: JSON syntax
+        run: |
+          set -euo pipefail
+          for f in \
+            .claude-plugin/marketplace.json \
+            plugins/agent-guidelines/.claude-plugin/plugin.json \
+            plugins/agent-guidelines/.codex-plugin/plugin.json \
+            plugins/agent-guidelines/hooks/hooks.json
+          do
+            printf 'Checking %s ... ' "$f"
+            jq empty "$f"
+            echo "ok"
+          done
+
+      - name: Version match across hosts and marketplace
+        run: |
+          set -euo pipefail
+          claude_v=$(jq -r '.version' plugins/agent-guidelines/.claude-plugin/plugin.json)
+          codex_v=$(jq -r '.version' plugins/agent-guidelines/.codex-plugin/plugin.json)
+          mkt_v=$(jq -r '.plugins[] | select(.name == "agent-guidelines") | .version' .claude-plugin/marketplace.json)
+          if [ "$claude_v" != "$codex_v" ] || [ "$claude_v" != "$mkt_v" ]; then
+            echo "FAIL: Claude=$claude_v, Codex=$codex_v, marketplace=$mkt_v"
+            exit 1
+          fi
+          echo "OK: version=$claude_v"
+
+      - name: CHANGELOG entry for the current version
+        run: |
+          set -euo pipefail
+          version=$(jq -r '.version' plugins/agent-guidelines/.claude-plugin/plugin.json)
+          ./.github/scripts/changelog-section.sh "$version" > /dev/null
+          echo "OK: CHANGELOG has a section for v$version"
+
+      - name: Skill frontmatter
+        run: ./.github/scripts/check-skill-frontmatter.sh
+
+      - name: Skill length
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            lines=$(awk 'END {print NR}' "$file")
+            if [ "$lines" -ge 100 ]; then
+              echo "FAIL: $file has $lines lines; it must have fewer than 100."
+              exit 1
+            fi
+          done < <(find plugins/agent-guidelines -type f -name SKILL.md -print0)
+
+      - name: No em dashes
+        run: |
+          set -euo pipefail
+          if grep -rn $'\u2014' --include='*.md' .; then
+            echo "FAIL: em dash found"
+            exit 1
+          fi

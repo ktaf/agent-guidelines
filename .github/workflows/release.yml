@@ -1,0 +1,97 @@
+---
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - plugins/agent-guidelines/.claude-plugin/plugin.json
+      - plugins/agent-guidelines/CHANGELOG.md
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish release page from CHANGELOG
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Resolve version
+        id: version
+        run: |
+          set -euo pipefail
+          version=$(jq -r '.version' plugins/agent-guidelines/.claude-plugin/plugin.json)
+          case "$version" in
+            ''|null) echo "FAIL: no version in plugin.json" >&2; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "Version $version"
+
+      - name: Check whether the release already exists
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/tags/$TAG")
+          case "$code" in
+            200) echo "exists=true"  >> "$GITHUB_OUTPUT"; echo "$TAG already released, nothing to do" ;;
+            404) echo "exists=false" >> "$GITHUB_OUTPUT"; echo "$TAG not released yet" ;;
+            *)   echo "FAIL: unexpected HTTP $code from the releases API" >&2; exit 1 ;;
+          esac
+
+      - name: Extract release notes from CHANGELOG
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          ./.github/scripts/changelog-section.sh "$VERSION" > /tmp/notes.md
+          cat /tmp/notes.md
+
+      - name: Create release
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg tag "$TAG" \
+            --arg sha "$GITHUB_SHA" \
+            --rawfile body /tmp/notes.md \
+            '{
+               tag_name: $tag,
+               target_commitish: $sha,
+               name: $tag,
+               body: $body,
+               draft: false,
+               prerelease: false
+             }' > /tmp/payload.json
+          code=$(curl -sS -o /tmp/response.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/payload.json \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases")
+          if [ "$code" != "201" ]; then
+            echo "FAIL: releases API returned HTTP $code" >&2
+            cat /tmp/response.json >&2
+            exit 1
+          fi
+          url=$(jq -r '.html_url' /tmp/response.json)
+          echo "Released $TAG: $url"
+          echo "### Released [\`$TAG\`]($url)" >> "$GITHUB_STEP_SUMMARY"

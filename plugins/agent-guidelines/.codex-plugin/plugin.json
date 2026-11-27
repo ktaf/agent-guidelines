@@ -1,0 +1,31 @@
+{
+  "name": "agent-guidelines",
+  "version": "0.1.1",
+  "description": "Action limits, simple code, and Simplified Technical English for every agent task.",
+  "author": {
+    "name": "ktaf"
+  },
+  "keywords": [
+    "guidelines",
+    "writing",
+    "simplified-technical-english",
+    "ste",
+    "safety"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Agent Guidelines",
+    "shortDescription": "Action limits and Simplified Technical English for every task",
+    "longDescription": "Action limits, simple code, and Simplified Technical English for every agent task.",
+    "developerName": "ktaf",
+    "category": "Coding",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use Agent Guidelines for this task."
+    ]
+  }
+}
